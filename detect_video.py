@@ -9,6 +9,12 @@ from yolov3_tf2.models import (
 from yolov3_tf2.dataset import transform_images
 from yolov3_tf2.utils import draw_outputs
 
+from gtts import gTTS
+import os
+import simpleaudio as sa
+from playsound import playsound
+from imutils import paths
+
 
 flags.DEFINE_string('classes', './data/labels/coco.names', 'path to classes file')
 flags.DEFINE_string('weights', './weights/yolov3.tf',
@@ -20,6 +26,40 @@ flags.DEFINE_string('video', './data/video/paris.mp4',
 flags.DEFINE_string('output', None, 'path to output video')
 flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
 flags.DEFINE_integer('num_classes', 80, 'number of classes in the model')
+
+def waitf(duration):
+    start = time.time()
+    while True:
+        if time.time()-start>duration:
+            return 1
+        if cv2.waitKey(1) == ord('q'):
+            return 0
+
+def variance_of_laplacian(image):
+    # compute the Laplacian of the image and then return the focus
+    # measure, which is simply the variance of the Laplacian
+    return cv2.Laplacian(image, cv2.CV_64F).var()
+
+def check_blur(image,threshold):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    fm = variance_of_laplacian(gray)
+    print(fm)
+    if fm<threshold:
+        return 0
+    return 1
+
+def audio(text,n):
+    try:
+        # text = "This is a test."
+        speech = gTTS(text = text, slow = False)
+        speech.save(r'C:\\Users\\zaina\\Object-Detection-API\\audio\\text'+str(n)+'.wav')  #CHANGE THESE 2 PATHS TO YOUR OWN PATH
+        os.system(r'C:\\Users\\zaina\\Object-Detection-API\\audio\\text'+str(n)+'.wav')
+        n=n+1
+    except:
+        audio(text,n)
+
+                    
+
 
 
 def main(_argv):
@@ -68,18 +108,59 @@ def main(_argv):
             else: 
                 break
 
+        img=cv2.flip(img, 1)
         img_in = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
         img_in = tf.expand_dims(img_in, 0)
         img_in = transform_images(img_in, FLAGS.size)
 
-        t1 = time.time()
-        boxes, scores, classes, nums = yolo.predict(img_in)
-        fps  = ( fps + (1./(time.time()-t1)) ) / 2
+        n=1
 
-        img = draw_outputs(img, (boxes, scores, classes, nums), class_names)
-        img = cv2.putText(img, "FPS: {:.2f}".format(fps), (0, 30),
-                          cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)
-        
+        if cv2.waitKey(1) == ord('a'):
+            while True:
+                _, img = vid.read()
+                img=cv2.flip(img, 1)
+
+                if (check_blur(img,threshold=150)==0):                    #ADJUST THRESHOLD HERE
+                    cv2.imshow('output', cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    print("blurred")
+                    continue
+
+                img_in = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
+                img_in = tf.expand_dims(img_in, 0)
+                img_in = transform_images(img_in, FLAGS.size)
+
+                t1 = time.time()
+                boxes, scores, classes, nums = yolo.predict(img_in)
+                fps  = ( fps + (1./(time.time()-t1)) ) / 2
+
+                img = draw_outputs(img, (boxes, scores, classes, nums), class_names)
+                cv2.imshow('output', img)
+
+                text=""
+                for i in range(80):
+                    if scores[0][i]==0:
+                        break
+                    Class=int(classes[0][i])
+                    place=((boxes[0][i][2]-boxes[0][i][0])/2)+boxes[0][i][0]
+                    print(place,class_names[Class])
+                    if place<.33:
+                        side='left'
+                    elif place<.66:
+                        side='center'
+                    else:
+                        side='right'
+                    if side=='center':
+                        text=text+" There is a "+class_names[Class]+' in the '+side+'.'
+                    else:
+                        text=text+" There is a "+class_names[Class]+' on the '+side+'.'
+
+                
+                audio(text,n)
+
+                if not(waitf(6)):
+                    break
+
+
         if FLAGS.output:
             out.write(img)
         cv2.imshow('output', img)
@@ -94,3 +175,4 @@ if __name__ == '__main__':
         app.run(main)
     except SystemExit:
         pass
+
